@@ -84,32 +84,32 @@ class EnhancedPavementDetector:
         
     def detect_white_markings(self, image: np.ndarray) -> np.ndarray:
         """
-        Detect white pavement markings - MUST be very bright and elongated.
+        Detect white pavement markings.
         
-        Strategy: Find VERY BRIGHT white pixels, then filter by shape
+        White markings are: bright (>180) + low saturation (<50)
         """
         # Convert to HSV and grayscale
         hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         
-        # Find VERY bright areas (brightness > threshold)
+        # Find bright areas
         _, bright_mask = cv2.threshold(gray, self.white_threshold, 255, cv2.THRESH_BINARY)
         
-        # White = low saturation (< 40) + high value (> threshold)
+        # White = low saturation (< 50) + high value
         white_mask = cv2.inRange(
             hsv,
             np.array([0, 0, self.white_threshold]),
-            np.array([180, 40, 255])
+            np.array([180, 50, 255])
         )
         
-        # Combine: MUST be both bright AND white (low saturation)
+        # Combine: bright AND white
         markings = cv2.bitwise_and(bright_mask, white_mask)
         
-        # Apply morphological opening to remove tiny noise
+        # Morphological cleanup
         kernel = np.ones((2, 2), np.uint8)
         markings = cv2.morphologyEx(markings, cv2.MORPH_OPEN, kernel)
         
-        # Apply closing to connect nearby pixels (helps with dashed lines)
+        # Connect nearby pixels
         kernel2 = np.ones((3, 3), np.uint8)
         markings = cv2.morphologyEx(markings, cv2.MORPH_CLOSE, kernel2)
         
@@ -176,7 +176,7 @@ class EnhancedPavementDetector:
         return cleaned
     
     def extract_markings(self, mask: np.ndarray) -> List[PavementMarking]:
-        """Extract and classify marking contours - STRICT FILTERING."""
+        """Extract and classify marking contours - BALANCED FILTERING."""
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         markings = []
@@ -190,30 +190,31 @@ class EnhancedPavementDetector:
             # Get bounding box
             x, y, w, h = cv2.boundingRect(contour)
             
-            # CRITICAL: Road markings are THIN and ELONGATED
-            # Buildings are LARGE and BOXY - EXCLUDE THEM!
+            # Calculate aspect ratio
             aspect_ratio = max(w, h) / max(min(w, h), 1)
             
-            # MUST be elongated (at least 2.5:1 ratio)
-            if aspect_ratio < 2.5:
+            # FILTER 1: Skip if NOT elongated (buildings are boxy)
+            # Accept markings with aspect ratio > 2
+            if aspect_ratio < 2.0:
                 continue
             
-            # MUST be relatively thin (max width 80 pixels for most markings)
-            if min(w, h) > 80:
+            # FILTER 2: Skip if too thick (buildings are wide)
+            # Crosswalks can be up to 150px wide, lane lines < 30px
+            if min(w, h) > 150:
                 continue
             
-            # MUST NOT be huge (max 0.5% of image)
-            max_area = self.image_shape[0] * self.image_shape[1] * 0.005
+            # FILTER 3: Skip if HUGE area (> 1% of image = building)
+            max_area = self.image_shape[0] * self.image_shape[1] * 0.01
             if area > max_area:
                 continue
             
-            # Calculate solidity (how filled the shape is)
+            # Calculate solidity
             hull = cv2.convexHull(contour)
             hull_area = cv2.contourArea(hull)
             solidity = area / max(hull_area, 1)
             
-            # MUST be solid (>0.6) to be a real marking, not a building outline
-            if solidity < 0.6:
+            # FILTER 4: Must be fairly solid (> 0.5) - not hollow building outline
+            if solidity < 0.5:
                 continue
             
             center = (x + w // 2, y + h // 2)
@@ -231,7 +232,7 @@ class EnhancedPavementDetector:
             )
             markings.append(marking)
         
-        logger.info(f"Extracted {len(markings)} markings (after strict filtering)")
+        logger.info(f"Extracted {len(markings)} markings")
         return markings
     
     def _classify_shape(self, contour, area, w, h) -> Tuple[str, float]:
@@ -286,18 +287,49 @@ class EnhancedPavementDetector:
         # Step 3: Combine all markings
         all_markings_mask = cv2.bitwise_or(white_mask, yellow_mask)
         
-        # Step 4: Optional - apply road mask to reduce false positives
-        # road_mask = self.create_road_mask(self.image)
-        # all_markings_mask = cv2.bitwise_and(all_markings_mask, road_mask)
+        # Step 4: Detect road areas and filter to road context
+        road_mask = self.detect_roads(self.image)
+        
+        # Only keep markings that are near roads (within 30 pixels)
+        kernel = np.ones((30, 30), np.uint8)
+        road_expanded = cv2.dilate(road_mask, kernel, iterations=1)
+        
+        # Filter to road areas
+        road_markings = cv2.bitwise_and(all_markings_mask, road_expanded)
         
         # Step 5: Clean up
-        cleaned = self.clean_detections(all_markings_mask)
+        cleaned = self.clean_detections(road_markings)
         self.debug_images['final_mask'] = cleaned
         
         # Step 6: Extract markings
         markings = self.extract_markings(cleaned)
         
         return markings
+    
+    def detect_roads(self, image: np.ndarray) -> np.ndarray:
+        """
+        Detect road surfaces (dark gray asphalt areas).
+        Roads are dark (brightness 40-130) and low saturation.
+        """
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+        
+        # Roads are medium-dark gray (40-130 brightness)
+        road_brightness = cv2.inRange(gray, 40, 130)
+        
+        # Roads have low saturation (not colorful)
+        low_saturation = cv2.inRange(hsv[:,:,1], 0, 60)
+        
+        # Combine
+        road_mask = cv2.bitwise_and(road_brightness, low_saturation)
+        
+        # Morphological operations to clean up
+        kernel = np.ones((15, 15), np.uint8)
+        road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_CLOSE, kernel)
+        road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_OPEN, kernel)
+        
+        self.debug_images['road_mask'] = road_mask
+        return road_mask
     
     def pixel_to_geo(self, x: int, y: int) -> Tuple[float, float]:
         """Convert pixel to geographic coordinates."""

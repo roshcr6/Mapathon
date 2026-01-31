@@ -161,14 +161,14 @@ async def run_complete_pipeline(
         results["satellite"] = {"image_path": image_path, "bounds": bounds.to_dict(), "location": loc_info["name"]}
         
         # Step 2: Extract pavement markings using ENHANCED detector
-        # Use VERY strict settings to avoid detecting buildings
+        # BALANCED settings - detect markings but filter buildings
         if HAS_V2_DETECTOR:
-            logger.info("Using Enhanced Pavement Detector V2 with STRICT settings")
+            logger.info("Using Enhanced Pavement Detector V2")
             pavement_result = extract_pavement_markings_v2(
                 image_path=image_path, 
                 output_geojson_path=str(GEOJSON_OUTPUT_PATH),
-                threshold=195,  # Very high threshold - only brightest markings
-                min_area=80,    # Larger minimum to avoid noise
+                threshold=180,  # Balanced threshold
+                min_area=80,    # Minimum marking size
                 geo_bounds=bounds.to_dict(),
                 save_visualization=True
             )
