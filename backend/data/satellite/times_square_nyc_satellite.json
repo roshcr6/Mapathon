@@ -1,0 +1,20 @@
+{
+  "bounds": {
+    "min_lat": 40.7560997756636,
+    "max_lat": 40.75974059207392,
+    "min_lon": -73.98948669433594,
+    "max_lon": -73.98399353027344
+  },
+  "zoom": 19,
+  "size": {
+    "width": 2048,
+    "height": 1792
+  },
+  "source": "ESRI World Imagery",
+  "tiles": {
+    "min_x": 154389,
+    "max_x": 154396,
+    "min_y": 197032,
+    "max_y": 197038
+  }
+}
