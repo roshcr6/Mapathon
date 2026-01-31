@@ -167,22 +167,21 @@ function getFeatureStyle(feature) {
   const confidence = feature.properties?.confidence || 0.5
   
   const colors = {
-    lane_line: '#FFFF00',      // Yellow
-    crosswalk: '#FFFFFF',       // White
+    lane_line: '#FFFF00',      // Bright Yellow
+    crosswalk: '#FF00FF',       // Magenta (visible on satellite)
     stop_line: '#FF0000',       // Red
     arrow: '#00FF00',           // Green
     unknown: '#FFA500'          // Orange
   }
   
   const color = colors[markingType] || colors.unknown
-  const opacity = 0.6 + (confidence * 0.4)
   
   return {
     fillColor: color,
-    fillOpacity: opacity,
-    color: '#000000',
-    weight: 1,
-    opacity: 0.8
+    fillOpacity: 0.7,
+    color: color,          // Same color for border
+    weight: 3,             // Thicker border for visibility
+    opacity: 1.0
   }
 }
 

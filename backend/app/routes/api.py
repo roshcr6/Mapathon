@@ -35,6 +35,13 @@ from ..utils.heatmap_generator import generate_traffic_heatmap, create_demo_heat
 from ..utils.satellite_downloader import SatelliteDataManager
 from ..utils.traffic_analyzer import process_traffic_video
 
+# Import enhanced detector
+try:
+    from ..utils.pavement_detector_v2 import extract_pavement_markings_v2
+    HAS_V2_DETECTOR = True
+except ImportError:
+    HAS_V2_DETECTOR = False
+
 router = APIRouter()
 
 # Initialize satellite data manager
@@ -153,11 +160,24 @@ async def run_complete_pipeline(
         image_path, bounds = satellite_manager.download_location(location)
         results["satellite"] = {"image_path": image_path, "bounds": bounds.to_dict(), "location": loc_info["name"]}
         
-        # Step 2: Extract pavement markings
-        pavement_result = extract_pavement_markings(
-            image_path=image_path, output_path=str(GEOJSON_OUTPUT_PATH),
-            threshold=threshold, min_area=100, geo_bounds=bounds.to_dict()
-        )
+        # Step 2: Extract pavement markings using ENHANCED detector
+        # Use VERY strict settings to avoid detecting buildings
+        if HAS_V2_DETECTOR:
+            logger.info("Using Enhanced Pavement Detector V2 with STRICT settings")
+            pavement_result = extract_pavement_markings_v2(
+                image_path=image_path, 
+                output_geojson_path=str(GEOJSON_OUTPUT_PATH),
+                threshold=195,  # Very high threshold - only brightest markings
+                min_area=80,    # Larger minimum to avoid noise
+                geo_bounds=bounds.to_dict(),
+                save_visualization=True
+            )
+            pavement_result["feature_count"] = pavement_result.get("total_markings", 0)
+        else:
+            pavement_result = extract_pavement_markings(
+                image_path=image_path, output_path=str(GEOJSON_OUTPUT_PATH),
+                threshold=threshold, min_area=100, geo_bounds=bounds.to_dict()
+            )
         results["pavement"] = pavement_result
         
         # Step 3: Process CCTV footage - ALWAYS use real video

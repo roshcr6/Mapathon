@@ -180,7 +180,7 @@ function App() {
             setShowHeatmap={setShowHeatmap}
             showSatellite={showSatellite}
             setShowSatellite={setShowSatellite}
-            onRefresh={loadDemoData}
+            onRefresh={runAIPipeline}
             loading={loading}
           />
           
@@ -195,6 +195,38 @@ function App() {
             geojsonData={geojsonData}
             heatmapData={heatmapData}
           />
+          
+          {statusMessage && (
+            <div style={{
+              margin: '10px',
+              padding: '10px',
+              background: '#1a1a2e',
+              border: '1px solid #00ff88',
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: '#00ff88'
+            }}>
+              {statusMessage}
+            </div>
+          )}
+          
+          {detectionStats && (
+            <div style={{
+              margin: '10px',
+              padding: '10px',
+              background: '#1a1a2e',
+              border: '1px solid #ffd700',
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: '#ffd700'
+            }}>
+              <div>📊 Detection Results:</div>
+              <div>✓ {detectionStats.totalFeatures} total markings</div>
+              <div>✓ {detectionStats.typeCounts.lane_line || 0} lane lines</div>
+              <div>✓ {detectionStats.typeCounts.crosswalk || 0} crosswalks</div>
+              <div>✓ {detectionStats.heatmapPoints} heatmap points</div>
+            </div>
+          )}
         </aside>
         
         <div className="map-container">
